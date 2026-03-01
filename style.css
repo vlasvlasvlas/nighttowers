@@ -493,10 +493,21 @@ body.dither-mode .laser-line.lvl-violet {
     outline: none;
 }
 
-/* Thumb — shared for both orientations */
+/* Thumb — shared for all faders */
 .fader::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
+    height: 20px;
+    width: 20px;
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    transition: background 0.2s, box-shadow 0.2s;
+}
+
+.fader::-moz-range-thumb {
     height: 20px;
     width: 20px;
     border-radius: 50%;
@@ -512,10 +523,30 @@ body.dither-mode .laser-line.lvl-violet {
     box-shadow: 0 0 10px rgba(160, 200, 255, 0.5);
 }
 
-.fader::-webkit-slider-runnable-track {
+/* Track for horizontal faders */
+.horizontal-fader::-webkit-slider-runnable-track {
     height: 3px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.horizontal-fader::-moz-range-track {
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.22);
+}
+
+/* Track for vertical faders */
+.vertical-fader::-webkit-slider-runnable-track {
+    width: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.vertical-fader::-moz-range-track {
+    width: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.22);
 }
 
 /* Horizontal faders (Master FX row) */
@@ -524,9 +555,8 @@ body.dither-mode .laser-line.lvl-violet {
     height: 20px;
 }
 
-/* Vertical faders: rotate a horizontal input so it goes bottom-to-top */
+/* Vertical faders: native writing-mode approach — works in Firefox, Chrome, Safari */
 .fader-track {
-    /* Visual height of the fader travel */
     height: 130px;
     width: 30px;
     display: flex;
@@ -536,18 +566,43 @@ body.dither-mode .laser-line.lvl-violet {
 }
 
 .vertical-fader {
-    /* Horizontal input rotated -90deg so min=bottom, max=top */
-    writing-mode: horizontal-tb;
-    direction: ltr;
+    /* Chrome/Safari: writing-mode makes it natively vertical */
+    writing-mode: vertical-lr;
+    direction: rtl;          /* rtl = min at bottom, max at top */
     -webkit-appearance: none;
     appearance: none;
-    width: 130px;
-    height: 20px;
-    transform: rotate(-90deg);
-    transform-origin: center center;
+    width: 20px;
+    height: 130px;
     margin: 0;
     padding: 0;
+    cursor: pointer;
     background: transparent;
+}
+
+/* Firefox: orient=vertical attribute makes it vertical natively */
+input[type=range][orient=vertical] {
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 20px;
+    height: 130px;
+    cursor: pointer;
+    background: transparent;
+}
+
+input[type=range][orient=vertical]::-moz-range-track {
+    width: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.22);
+}
+
+input[type=range][orient=vertical]::-moz-range-thumb {
+    height: 20px;
+    width: 20px;
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.4);
 }
 
 
