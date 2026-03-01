@@ -111,43 +111,38 @@ body.dither-mode #dither-overlay {
     display: block;
 }
 
-/* Posterize the whole scene — EGA dark navy palette */
-body.dither-mode #scene {
-    filter: url(#dither-posterize) brightness(0.82) saturate(0.55);
-    image-rendering: pixelated;
-    overflow: hidden;
-    /* Hard-stepped sky gradient — each stop is a distinct EGA color band */
-    background:
-        linear-gradient(to bottom,
-            #000005 0%,    #000005 7%,
-            #000318 7%,    #000318 14%,
-            #000c38 14%,   #000c38 22%,
-            #001460 22%,   #001460 30%,
-            #001880 30%,   #001880 38%,
-            #001070 38%,   #001070 46%,
-            #000858 46%,   #000858 54%,
-            #000440 54%,   #000440 62%,
-            #000228 62%,   #000228 72%,
-            #00010e 72%,   #00010e 84%,
-            #000008 84%,   #000008 100%);
-}
-
-/* Dither dot transition bands between sky color steps */
-body.dither-mode #scene::before {
-    content: '';
+/* EGA canvas: sits behind sky-layer, replaces CSS background in dither mode */
+#ega-canvas {
+    display: none;
     position: absolute;
     inset: 0;
+    width: 100%;
+    height: 100%;
     z-index: 0;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
     pointer-events: none;
-    /* 2×2 Bayer checkerboard to simulate color-step dithering */
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect x='0' y='0' width='2' height='2' fill='rgba(0,20,80,0.18)'/%3E%3Crect x='2' y='2' width='2' height='2' fill='rgba(0,20,80,0.18)'/%3E%3C/svg%3E");
-    background-repeat: repeat;
-    background-size: 4px 4px;
+}
+
+body.dither-mode #ega-canvas {
+    display: block;
+}
+
+/* In dither mode, suppress the CSS sky background so canvas takes over */
+body.dither-mode #scene {
+    background: #000 !important;
+    filter: none;
+    image-rendering: pixelated;
+}
+
+/* stars still visible over canvas */
+body.dither-mode #sky-layer {
     mix-blend-mode: screen;
-    opacity: 0.6;
-    /* Only in sky */
-    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 50%, transparent 68%);
-    mask-image: linear-gradient(to bottom, black 0%, black 50%, transparent 68%);
+}
+
+/* scene::before: remove any leftover bands */
+body.dither-mode #scene::before {
+    display: none;
 }
 
 /* Stars more pixelated in dither mode */
@@ -157,18 +152,18 @@ body.dither-mode #stars-bg {
     opacity: 0.9;
 }
 
-/* Mountains: true near-black (Loom silhouette) */
+/* Mountains: silhouette near-black (Loom look) */
 body.dither-mode #horizon path {
     fill: #010208;
 }
 
 body.dither-mode #horizon-far {
     filter: none;
-    opacity: 0.9;
+    opacity: 1;
 }
 
 body.dither-mode #horizon-far path {
-    fill: #040c30;
+    fill: #020b28;
 }
 
 /* Towers: slightly blue-tinted in dither mode */

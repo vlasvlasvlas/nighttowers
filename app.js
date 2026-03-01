@@ -62,6 +62,108 @@ const channels = {
     balizas: new Tone.Channel().connect(masterDelay)
 };
 
+// ======= EGA DITHER ENGINE (Bayer 4×4 ordered dithering, EGA 16-color palette) =======
+const EGA = [
+    [0,0,0],       [0,0,170],     [0,170,0],     [0,170,170],
+    [170,0,0],     [170,0,170],   [170,85,0],    [170,170,170],
+    [85,85,85],    [85,85,255],   [85,255,85],   [85,255,255],
+    [255,85,85],   [255,85,255],  [255,255,85],  [255,255,255]
+];
+const BAYER4 = [
+    [0,8,2,10], [12,4,14,6], [3,11,1,9], [15,7,13,5]
+];
+let egaCanvas = null, egaCtx = null;
+
+function nearestEGA(r, g, b) {
+    let best = 0, bestD = 1e9;
+    for (let i = 0; i < 16; i++) {
+        const dr = r - EGA[i][0], dg = g - EGA[i][1], db = b - EGA[i][2];
+        // weight green channel slightly less, blue more for night palette
+        const d = dr*dr + dg*dg*0.9 + db*db*1.1;
+        if (d < bestD) { bestD = d; best = i; }
+    }
+    return EGA[best];
+}
+
+function egaSkyColor(t) {
+    // t: 0=top of sky, 1=bottom of sky area
+    // Loom night sky: near-black top → deep royal blue middle → dark at horizon
+    if (t < 0.06) {
+        return [0, 0, Math.round(t/0.06 * 30)];
+    } else if (t < 0.18) {
+        const p = (t-0.06)/0.12;
+        return [0, 0, Math.round(30 + p*140)];
+    } else if (t < 0.38) {
+        const p = (t-0.18)/0.20;
+        return [Math.round(p*10), Math.round(p*8), Math.round(170 + p*85)];
+    } else if (t < 0.55) {
+        const p = (t-0.38)/0.17;
+        return [Math.round(10 + p*18), Math.round(8 + p*12), Math.round(255 - p*30)];
+    } else if (t < 0.72) {
+        const p = (t-0.55)/0.17;
+        return [Math.round(28 - p*20), Math.round(20 - p*14), Math.round(225 - p*95)];
+    } else {
+        const p = (t-0.72)/0.28;
+        return [Math.round(8 - p*7), Math.round(6 - p*5), Math.round(130 - p*120)];
+    }
+}
+
+function renderEGAFrame() {
+    if (!egaCanvas || !egaCtx) return;
+    const W = egaCanvas.width, H = egaCanvas.height;
+    const img = egaCtx.createImageData(W, H);
+    const d = img.data;
+    const skyH = Math.floor(H * 0.62);
+    for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+            const bval = BAYER4[y & 3][x & 3]; // 0-15
+            const thr  = (bval / 15 - 0.5) * 58; // ±29 dither spread
+            let r, g, b;
+            if (y < skyH) {
+                [r, g, b] = egaSkyColor(y / skyH);
+            } else {
+                const gt = (y - skyH) / (H - skyH);
+                r = Math.round(2 - gt * 2);
+                g = Math.round(3 - gt * 3);
+                b = Math.round(14 - gt * 14);
+            }
+            const [qr, qg, qb] = nearestEGA(
+                Math.max(0, Math.min(255, r + thr)),
+                Math.max(0, Math.min(255, g + thr)),
+                Math.max(0, Math.min(255, b + thr))
+            );
+            const idx = (y * W + x) * 4;
+            d[idx] = qr; d[idx+1] = qg; d[idx+2] = qb; d[idx+3] = 255;
+        }
+    }
+    egaCtx.putImageData(img, 0, 0);
+}
+
+function startEGADither() {
+    egaCanvas = document.getElementById('ega-canvas');
+    const sc = scene.getBoundingClientRect();
+    egaCanvas.width  = Math.ceil(sc.width  / 5);
+    egaCanvas.height = Math.ceil(sc.height / 5);
+    egaCtx = egaCanvas.getContext('2d');
+    renderEGAFrame();
+    // Re-render on resize
+    startEGADither._onResize = () => {
+        const s = scene.getBoundingClientRect();
+        egaCanvas.width  = Math.ceil(s.width  / 5);
+        egaCanvas.height = Math.ceil(s.height / 5);
+        renderEGAFrame();
+    };
+    window.addEventListener('resize', startEGADither._onResize);
+}
+
+function stopEGADither() {
+    if (startEGADither._onResize) {
+        window.removeEventListener('resize', startEGADither._onResize);
+        startEGADither._onResize = null;
+    }
+}
+// ======= END EGA DITHER ENGINE =======
+
 // Overload Audio Elements
 let baseDrone;
 let arpeggiatorPattern;
@@ -104,8 +206,10 @@ closeHelpBtn.addEventListener('click', () => {
     helpPanel.classList.add('hidden');
 });
 ditherBtn.addEventListener('click', () => {
-    document.body.classList.toggle('dither-mode');
-    ditherBtn.classList.toggle('active');
+    const active = document.body.classList.toggle('dither-mode');
+    ditherBtn.classList.toggle('active', active);
+    if (active) startEGADither();
+    else stopEGADither();
 });
 fullscreenBtn.addEventListener('click', () => {
     if (!document.fullscreenElement) {

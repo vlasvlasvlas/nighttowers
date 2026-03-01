@@ -130,8 +130,10 @@
     </div>
 
     <div id="scene" class="hidden">
-        <!-- Dither overlay: scanlines + noise grain -->
+        <!-- Dither overlay: scanlines -->
         <div id="dither-overlay"></div>
+        <!-- EGA canvas: real Bayer-dithered sky, hidden unless dither-mode active -->
+        <canvas id="ega-canvas"></canvas>
         <!-- Sky layer: drifts slowly as the night passes -->
         <div id="sky-layer">
             <div id="stars-bg"></div>
