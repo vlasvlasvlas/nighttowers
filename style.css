@@ -257,28 +257,33 @@ body.dither-mode .beacon.main-node:not(.celestial).active {
     100% { background: #ff5555; } /* EGA bright red — on phase */
 }
 
-/* ── CELESTIAL STARS (inactive) — 6×6px, hard EGA step twinkle ── */
+/* ── CELESTIAL STARS (inactive) — 7×7px, always bright, hard EGA step twinkle ── */
 body.dither-mode .celestial {
     opacity: 1 !important;
     animation-name:            celestialDither !important;
     animation-duration:        3.5s !important;
-    animation-timing-function: steps(2, end) !important;  /* 3-step hard jump */
+    animation-timing-function: steps(2, end) !important;
     animation-iteration-count: infinite !important;
     animation-direction:       alternate !important;
     /* delay inherited from .s1/.s2/… */
-    background: #0000aa !important;
-    box-shadow: none !important;
+    background: #5555ff !important;   /* EGA bright blue — never dark */
+    /* Small pixel cross so they're always findable even at dim phase */
+    box-shadow:
+        2px  0   0 0 #55ffff,
+       -2px  0   0 0 #55ffff,
+        0    2px 0 0 #55ffff,
+        0   -2px 0 0 #55ffff !important;
     border-radius: 0 !important;
-    width: 6px !important;
-    height: 6px !important;
+    width: 7px !important;
+    height: 7px !important;
     transform: scale(1) !important;
 }
 
-/* 3 hard EGA steps: dark blue → bright blue → bright cyan */
+/* Bright blue → cyan → white — always visible against dark sky */
 @keyframes celestialDither {
-    0%   { background: #0000aa; } /* EGA dark blue */
-    50%  { background: #5555ff; } /* EGA bright blue */
-    100% { background: #55ffff; } /* EGA bright cyan */
+    0%   { background: #5555ff; box-shadow: 2px 0 0 0 #55ffff, -2px 0 0 0 #55ffff, 0 2px 0 0 #55ffff, 0 -2px 0 0 #55ffff; }
+    50%  { background: #55ffff; box-shadow: 2px 0 0 0 #ffffff, -2px 0 0 0 #ffffff, 0 2px 0 0 #ffffff, 0 -2px 0 0 #ffffff; }
+    100% { background: #ffffff; box-shadow: 2px 0 0 0 #55ffff, -2px 0 0 0 #55ffff, 0 2px 0 0 #55ffff, 0 -2px 0 0 #55ffff; }
 }
 
 /* ── CELESTIAL STARS (active) — 10×10px, fast flash + pixel cross halo ── */
