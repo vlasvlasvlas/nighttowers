@@ -128,33 +128,28 @@ body.dither-mode #ega-canvas {
     display: block;
 }
 
-/* In dither mode, suppress the CSS sky background so canvas takes over */
+/* EGA dither mode: apply EGA 16-color quantize filter to the WHOLE scene */
 body.dither-mode #scene {
-    background: #000 !important;
-    filter: none;
+    background: #000000 !important;
+    filter: url(#dither-posterize);
     image-rendering: pixelated;
 }
 
-/* stars still visible over canvas */
-body.dither-mode #sky-layer {
-    mix-blend-mode: screen;
-}
-
-/* scene::before: remove any leftover bands */
+/* scene::before: remove gradient bands */
 body.dither-mode #scene::before {
     display: none;
 }
 
-/* Stars more pixelated in dither mode */
+/* Stars: EGA with pixelated rendering */
 body.dither-mode #stars-bg {
-    background-size: 420px 220px;
+    background-size: 360px 190px;
     image-rendering: pixelated;
-    opacity: 0.9;
+    opacity: 1;
 }
 
-/* Mountains: silhouette near-black (Loom look) */
+/* Mountains: exact EGA colors so filter leaves them crisp */
 body.dither-mode #horizon path {
-    fill: #010208;
+    fill: #000000; /* EGA black */
 }
 
 body.dither-mode #horizon-far {
@@ -163,42 +158,106 @@ body.dither-mode #horizon-far {
 }
 
 body.dither-mode #horizon-far path {
-    fill: #020b28;
+    fill: #0000aa; /* EGA dark blue — clean input for the scene filter */
 }
 
-/* Towers: slightly blue-tinted in dither mode */
+/* Towers: EGA black */
 body.dither-mode .structure {
-    background: #04081a !important;
+    background: #000000 !important;
+    box-shadow: none !important;
 }
 
 body.dither-mode .t3 .structure,
 body.dither-mode .t4 .structure,
 body.dither-mode .t7 .structure,
 body.dither-mode .t9 .structure {
-    background: linear-gradient(to right, #060c22, #0d1840, #060c22) !important;
+    background: #000000 !important;
 }
 
-/* Lasers: hard color quantized in dither mode */
+/* Lasers: exact EGA palette colors — quantize filter keeps them crisp */
 body.dither-mode .laser-line {
-    stroke: #cc2200;
-    stroke-width: 0.25;
-    filter: none;
-    opacity: 0.7;
-}
-body.dither-mode .laser-line.lvl-cyan {
-    stroke: #00cccc;
-    filter: none;
-    opacity: 0.8;
-}
-body.dither-mode .laser-line.lvl-violet {
-    stroke: #cc00cc;
+    stroke: #aa0000; /* EGA dark red */
     stroke-width: 0.3;
     filter: none;
-    animation: pulseLaserDither 0.6s steps(1) infinite alternate;
+    opacity: 1;
+}
+body.dither-mode .laser-line.lvl-cyan {
+    stroke: #55ffff; /* EGA bright cyan */
+    filter: none;
+    opacity: 1;
+}
+body.dither-mode .laser-line.lvl-violet {
+    stroke: #aa00aa; /* EGA dark magenta */
+    stroke-width: 0.3;
+    filter: none;
+    animation: pulseLaserDither 0.5s steps(1) infinite alternate;
+}
+
+/* ── INTERACTIVE NODES: force solid EGA colors, kill transparency/glow ──────
+   Without this, nodes at opacity < 0.5 composite to near-black on the dark
+   background and the EGA quantize filter snaps them to [0,0,0] → invisible.
+   Pointer events (::after hitboxes) are DOM-based and unaffected by filter. */
+
+/* Beacons (tower lights) — inactive: solid EGA dark red, always visible */
+body.dither-mode .beacon.main-node:not(.celestial) {
+    opacity: 1 !important;
+    animation: beaconDither 0.7s steps(1) infinite alternate !important;
+    background: #aa0000 !important;  /* EGA dark red */
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    transform: scale(1) !important;
+}
+
+/* Beacons — active: EGA bright red, larger */
+body.dither-mode .beacon.main-node:not(.celestial).active {
+    animation: beaconDitherActive 0.4s steps(1) infinite alternate !important;
+    background: #ff5555 !important;  /* EGA bright red */
+    box-shadow: none !important;
+    transform: scale(1.4) !important;
+    border-radius: 0 !important;
+}
+
+@keyframes beaconDither {
+    0%   { background: #550000 !important; } /* EGA off */
+    100% { background: #aa0000 !important; } /* EGA on */
+}
+
+@keyframes beaconDitherActive {
+    0%   { background: #aa0000 !important; }
+    100% { background: #ff5555 !important; }
+}
+
+/* Celestial stars — inactive: solid EGA blue-white, no blink fade */
+body.dither-mode .celestial {
+    opacity: 1 !important;
+    animation: none !important;
+    background: #5555ff !important;  /* EGA bright blue — visible on black sky */
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    /* Slightly enlarge so they don't disappear at 2px */
+    width: 3px !important;
+    height: 3px !important;
+    transform: scale(1) !important;
+}
+
+/* Celestial stars — active: EGA bright cyan */
+body.dither-mode .celestial.active {
+    animation: celestialDitherActive 0.5s steps(1) infinite alternate !important;
+    background: #55ffff !important;  /* EGA bright cyan */
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    width: 5px !important;
+    height: 5px !important;
+    transform: scale(1) !important;
+}
+
+@keyframes celestialDitherActive {
+    0%   { background: #0000aa !important; } /* EGA dark blue */
+    100% { background: #55ffff !important; } /* EGA bright cyan */
 }
 
 @keyframes pulseLaserDither {
-    0%   { opacity: 0.4; }
+    0%   { opacity: 0.3; }
     100% { opacity: 1.0; }
 }
 
