@@ -69,6 +69,7 @@ const EGA = [
     [85,85,85],    [85,85,255],   [85,255,85],   [85,255,255],
     [255,85,85],   [255,85,255],  [255,255,85],  [255,255,255]
 ];
+// Classic Bayer 4×4 ordered dither matrix
 const BAYER4 = [
     [0,8,2,10], [12,4,14,6], [3,11,1,9], [15,7,13,5]
 ];
@@ -78,33 +79,45 @@ function nearestEGA(r, g, b) {
     let best = 0, bestD = 1e9;
     for (let i = 0; i < 16; i++) {
         const dr = r - EGA[i][0], dg = g - EGA[i][1], db = b - EGA[i][2];
-        // weight green channel slightly less, blue more for night palette
-        const d = dr*dr + dg*dg*0.9 + db*db*1.1;
+        const d = dr*dr + dg*dg + db*db;
         if (d < bestD) { bestD = d; best = i; }
     }
     return EGA[best];
 }
 
 function egaSkyColor(t) {
-    // t: 0=top of sky, 1=bottom of sky area
-    // Loom night sky: near-black top → deep royal blue middle → dark at horizon
-    if (t < 0.06) {
-        return [0, 0, Math.round(t/0.06 * 30)];
+    // t: 0 = top, 1 = bottom of sky area
+    // Strategy: wide SOLID EGA-matching zones, narrow transition seams.
+    // Solid zones map directly to exact EGA colors so dither has no effect there.
+    // Seams interpolate between adjacent EGA colors → dither creates a 50/50 mix.
+    if (t < 0.08) {
+        // Top: pure black fading in
+        return [0, 0, Math.round(t / 0.08 * 20)];
     } else if (t < 0.18) {
-        const p = (t-0.06)/0.12;
-        return [0, 0, Math.round(30 + p*140)];
-    } else if (t < 0.38) {
-        const p = (t-0.18)/0.20;
-        return [Math.round(p*10), Math.round(p*8), Math.round(170 + p*85)];
-    } else if (t < 0.55) {
-        const p = (t-0.38)/0.17;
-        return [Math.round(10 + p*18), Math.round(8 + p*12), Math.round(255 - p*30)];
-    } else if (t < 0.72) {
-        const p = (t-0.55)/0.17;
-        return [Math.round(28 - p*20), Math.round(20 - p*14), Math.round(225 - p*95)];
+        // Seam: black → dark blue
+        const p = (t - 0.08) / 0.10;
+        return [0, 0, Math.round(20 + p * 150)]; // 20→170
+    } else if (t < 0.44) {
+        // Wide solid dark blue band — EGA #0000AA = [0,0,170]
+        return [0, 0, 170];
+    } else if (t < 0.56) {
+        // Seam: dark blue → bright blue
+        const p = (t - 0.44) / 0.12;
+        return [Math.round(p * 85), Math.round(p * 85), Math.round(170 + p * 85)]; // [0,0,170]→[85,85,255]
+    } else if (t < 0.66) {
+        // Narrow bright blue band — EGA #5555FF = [85,85,255]
+        return [85, 85, 255];
+    } else if (t < 0.76) {
+        // Seam: bright blue → dark blue
+        const p = (t - 0.66) / 0.10;
+        return [Math.round(85 - p * 85), Math.round(85 - p * 85), 255];
+    } else if (t < 0.88) {
+        // Solid dark blue again
+        return [0, 0, Math.round(255 - (t - 0.76) / 0.12 * 85)]; // 255→170
     } else {
-        const p = (t-0.72)/0.28;
-        return [Math.round(8 - p*7), Math.round(6 - p*5), Math.round(130 - p*120)];
+        // Fade to near-black at horizon
+        const p = (t - 0.88) / 0.12;
+        return [0, 0, Math.round(170 - p * 168)];
     }
 }
 
@@ -113,19 +126,21 @@ function renderEGAFrame() {
     const W = egaCanvas.width, H = egaCanvas.height;
     const img = egaCtx.createImageData(W, H);
     const d = img.data;
-    const skyH = Math.floor(H * 0.62);
+    const skyH = Math.floor(H * 0.64);
+    // Dither spread: small enough so solid EGA zones stay solid
+    // (bval 0-15 → normalized -0.5..+0.5 * spread)
+    const SPREAD = 20;
     for (let y = 0; y < H; y++) {
         for (let x = 0; x < W; x++) {
-            const bval = BAYER4[y & 3][x & 3]; // 0-15
-            const thr  = (bval / 15 - 0.5) * 58; // ±29 dither spread
+            const bval = BAYER4[y & 3][x & 3];
+            const thr  = (bval / 15 - 0.5) * SPREAD; // ±10
             let r, g, b;
             if (y < skyH) {
                 [r, g, b] = egaSkyColor(y / skyH);
             } else {
+                // Ground: near-black, tiny blue tint, no dither needed
                 const gt = (y - skyH) / (H - skyH);
-                r = Math.round(2 - gt * 2);
-                g = Math.round(3 - gt * 3);
-                b = Math.round(14 - gt * 14);
+                r = 0; g = 0; b = Math.round(12 - gt * 12);
             }
             const [qr, qg, qb] = nearestEGA(
                 Math.max(0, Math.min(255, r + thr)),
@@ -142,15 +157,15 @@ function renderEGAFrame() {
 function startEGADither() {
     egaCanvas = document.getElementById('ega-canvas');
     const sc = scene.getBoundingClientRect();
-    egaCanvas.width  = Math.ceil(sc.width  / 5);
-    egaCanvas.height = Math.ceil(sc.height / 5);
+    // Scale 3: 3×3 px blocks — authentic EGA 320×200 feel
+    egaCanvas.width  = Math.ceil(sc.width  / 3);
+    egaCanvas.height = Math.ceil(sc.height / 3);
     egaCtx = egaCanvas.getContext('2d');
     renderEGAFrame();
-    // Re-render on resize
     startEGADither._onResize = () => {
         const s = scene.getBoundingClientRect();
-        egaCanvas.width  = Math.ceil(s.width  / 5);
-        egaCanvas.height = Math.ceil(s.height / 5);
+        egaCanvas.width  = Math.ceil(s.width  / 3);
+        egaCanvas.height = Math.ceil(s.height / 3);
         renderEGAFrame();
     };
     window.addEventListener('resize', startEGADither._onResize);
