@@ -62,108 +62,149 @@ const channels = {
     balizas: new Tone.Channel().connect(masterDelay)
 };
 
-// ======= EGA DITHER ENGINE (Bayer 4×4 ordered dithering, EGA 16-color palette) =======
-const EGA = [
-    [0,0,0],       [0,0,170],     [0,170,0],     [0,170,170],
-    [170,0,0],     [170,0,170],   [170,85,0],    [170,170,170],
-    [85,85,85],    [85,85,255],   [85,255,85],   [85,255,255],
-    [255,85,85],   [255,85,255],  [255,255,85],  [255,255,255]
-];
-// Classic Bayer 4×4 ordered dither matrix
-const BAYER4 = [
-    [0,8,2,10], [12,4,14,6], [3,11,1,9], [15,7,13,5]
-];
-let egaCanvas = null, egaCtx = null;
+// ======= EGA DITHER ENGINE v3 — Monkey Island 1 / Loom quality =================
+// Full-scene canvas render: sky bands, mountain silhouettes, background stars.
+// Uses Bayer 4×4 ordered dithering at every color-band transition — exactly how
+// EGA games created smooth gradients from only 16 colors.
+// HTML elements (beacons, interactive stars, lasers) overlay with CSS EGA colors.
+// =================================================================================
+const BAYER4 = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+let egaCanvas = null, egaCtx = null, egaMask = null, egaBgStars = null;
 
-function nearestEGA(r, g, b) {
-    let best = 0, bestD = 1e9;
-    for (let i = 0; i < 16; i++) {
-        const dr = r - EGA[i][0], dg = g - EGA[i][1], db = b - EGA[i][2];
-        const d = dr*dr + dg*dg + db*db;
-        if (d < bestD) { bestD = d; best = i; }
-    }
-    return EGA[best];
+// Deterministic PRNG so background stars are identical every render
+function _prng(seed) {
+    let s = seed >>> 0;
+    return () => {
+        s = (s + 0x6D2B79F5) >>> 0;
+        let z = Math.imul(s ^ s >>> 15, 1 | s);
+        z ^= z + Math.imul(z ^ z >>> 7, 61 | z);
+        return ((z ^ z >>> 14) >>> 0) / 4294967296;
+    };
 }
 
-function egaSkyColor(t) {
-    // t: 0 = top, 1 = bottom of sky area
-    // Strategy: wide SOLID EGA-matching zones, narrow transition seams.
-    // Solid zones map directly to exact EGA colors so dither has no effect there.
-    // Seams interpolate between adjacent EGA colors → dither creates a 50/50 mix.
-    if (t < 0.08) {
-        // Top: pure black fading in
-        return [0, 0, Math.round(t / 0.08 * 20)];
-    } else if (t < 0.18) {
-        // Seam: black → dark blue
-        const p = (t - 0.08) / 0.10;
-        return [0, 0, Math.round(20 + p * 150)]; // 20→170
-    } else if (t < 0.44) {
-        // Wide solid dark blue band — EGA #0000AA = [0,0,170]
-        return [0, 0, 170];
-    } else if (t < 0.56) {
-        // Seam: dark blue → bright blue
-        const p = (t - 0.44) / 0.12;
-        return [Math.round(p * 85), Math.round(p * 85), Math.round(170 + p * 85)]; // [0,0,170]→[85,85,255]
-    } else if (t < 0.66) {
-        // Narrow bright blue band — EGA #5555FF = [85,85,255]
-        return [85, 85, 255];
-    } else if (t < 0.76) {
-        // Seam: bright blue → dark blue
-        const p = (t - 0.66) / 0.10;
-        return [Math.round(85 - p * 85), Math.round(85 - p * 85), 255];
-    } else if (t < 0.88) {
-        // Solid dark blue again
-        return [0, 0, Math.round(255 - (t - 0.76) / 0.12 * 85)]; // 255→170
-    } else {
-        // Fade to near-black at horizon
-        const p = (t - 0.88) / 0.12;
-        return [0, 0, Math.round(170 - p * 168)];
+// Sky color at normalized Y position t (0=top, 1=bottom).
+// bt = Bayer threshold 0..1. At transition zones the Bayer value SELECTS
+// between the two adjacent EGA colors — this produces the authentic 4×4
+// checkerboard visible at every color seam in MI1/Loom.
+function egaBand(t, bt) {
+    const B  = [0, 0, 0];
+    const DB = [0, 0, 170];
+    const LB = [85, 85, 255];
+    // Pure bands + explicit dither seam zones
+    if (t < 0.07) return B;
+    if (t < 0.26) return bt < (t - 0.07) / 0.19 ? DB : B;   // seam B↔DB
+    if (t < 0.44) return DB;
+    if (t < 0.58) return bt < (t - 0.44) / 0.14 ? LB : DB;  // seam DB↔LB
+    if (t < 0.67) return LB;
+    if (t < 0.80) return bt < (t - 0.67) / 0.13 ? DB : LB;  // seam LB↔DB
+    if (t < 0.89) return DB;
+    if (t < 0.98) return bt < (t - 0.89) / 0.09 ? B  : DB;  // seam DB↔B
+    return B;
+}
+
+// Build a W×H pixel mask for the two mountain layers.
+// Near mountain pixels have red channel > 64.
+// Far mountain pixels have blue channel > 64 (and not red).
+function buildMountainMask(W, H) {
+    const tmp = document.createElement('canvas');
+    tmp.width = W; tmp.height = H;
+    const ctx = tmp.getContext('2d');
+    ctx.scale(W / 100, H / 100);
+    // Far range: blue-only marker
+    ctx.fillStyle = '#0000FF';
+    ctx.fill(new Path2D('M0,100 L0,72 C3,69 6,65 9,61 C12,57 14,59 17,63 C19,67 21,63 23,58 C25,53 27,47 30,42 C33,38 35,40 37,44 C39,48 40,45 42,42 C44,38 46,34 49,30 C52,26 54,28 56,32 C58,36 59,38 61,40 C63,38 65,34 67,30 C69,26 71,23 73,26 C75,30 77,34 79,36 C81,33 83,30 85,26 C87,22 89,19 91,23 C93,27 95,31 97,35 C98,37 99,39 100,42 L100,100 Z'));
+    // Near range: red marker, overwrites overlap
+    ctx.fillStyle = '#FF0000';
+    ctx.fill(new Path2D('M0,100 L0,84 C2,82 4,80 6,77 C8,74 10,76 12,78 C14,76 16,72 18,69 C20,66 22,68 24,72 C26,76 28,72 30,67 C33,61 35,54 38,48 C41,44 43,46 45,50 C47,52 48,49 50,46 C52,42 54,38 57,33 C60,29 62,31 64,35 C66,39 67,41 69,43 C71,40 73,37 75,33 C77,29 79,26 81,29 C83,33 85,37 87,39 C89,37 91,34 93,38 C95,42 97,46 99,52 L100,55 L100,100 Z'));
+    return ctx.getImageData(0, 0, W, H).data;
+}
+
+// Scatter deterministic background stars in the sky area
+function buildBgStars(W, H) {
+    const rnd = _prng(0xC0FFEE42);
+    const buf = [];
+    const COLS = [[255,255,255],[85,255,255],[255,255,85],[170,170,170],[255,85,255]];
+    for (let i = 0; i < 130; i++) {
+        buf.push(
+            Math.floor(rnd() * W),
+            Math.floor(rnd() * H * 0.54), // upper 54% — sky only
+            ...COLS[Math.floor(rnd() * COLS.length)]
+        );
     }
+    return buf; // flat: [x, y, r, g, b, x, y, r, g, b, ...]
 }
 
 function renderEGAFrame() {
     if (!egaCanvas || !egaCtx) return;
     const W = egaCanvas.width, H = egaCanvas.height;
-    const img = egaCtx.createImageData(W, H);
-    const d = img.data;
-    const skyH = Math.floor(H * 0.64);
-    // Dither spread: small enough so solid EGA zones stay solid
-    // (bval 0-15 → normalized -0.5..+0.5 * spread)
-    const SPREAD = 20;
+    if (!egaMask)    egaMask    = buildMountainMask(W, H);
+    if (!egaBgStars) egaBgStars = buildBgStars(W, H);
+
+    const img  = egaCtx.createImageData(W, H);
+    const d    = img.data;
+    const EDGE = 5; // dithered fringe height above mountain peaks (canvas pixels)
+
     for (let y = 0; y < H; y++) {
         for (let x = 0; x < W; x++) {
-            const bval = BAYER4[y & 3][x & 3];
-            const thr  = (bval / 15 - 0.5) * SPREAD; // ±10
-            let r, g, b;
-            if (y < skyH) {
-                [r, g, b] = egaSkyColor(y / skyH);
-            } else {
-                // Ground: near-black, tiny blue tint, no dither needed
-                const gt = (y - skyH) / (H - skyH);
-                r = 0; g = 0; b = Math.round(12 - gt * 12);
-            }
-            const [qr, qg, qb] = nearestEGA(
-                Math.max(0, Math.min(255, r + thr)),
-                Math.max(0, Math.min(255, g + thr)),
-                Math.max(0, Math.min(255, b + thr))
-            );
             const idx = (y * W + x) * 4;
-            d[idx] = qr; d[idx+1] = qg; d[idx+2] = qb; d[idx+3] = 255;
+            const bt  = BAYER4[y & 3][x & 3] / 15; // Bayer threshold 0..1
+            const isNear = egaMask[idx]   > 64;           // red = near mountain
+            const isFar  = !isNear && egaMask[idx+2] > 64; // blue = far mountain
+
+            let color;
+            if (isNear) {
+                color = [0, 0, 0];     // near mountain: EGA black
+            } else if (isFar) {
+                color = [0, 0, 170];   // far mountain:  EGA dark blue
+            } else {
+                // Sky: check for mountain-peak fringe below this pixel
+                // Fringe: 1px below = mostly mountain, EDGE px below = mostly sky
+                // → produces Bayer-dithered feathered edge like MI1 mountain outlines
+                let mtnDist = 0, mtnNear = false;
+                for (let dy = 1; dy <= EDGE; dy++) {
+                    if (y + dy >= H) break;
+                    const ni = ((y + dy) * W + x) * 4;
+                    if (egaMask[ni] > 64)   { mtnDist = dy; mtnNear = true;  break; }
+                    if (egaMask[ni+2] > 64) { mtnDist = dy; mtnNear = false; break; }
+                }
+                const sky = egaBand(y / H, bt);
+                if (mtnDist > 0) {
+                    // threshold: closer to peak → more mountain pixels
+                    const thr = (EDGE - mtnDist) / EDGE; // 0.8 at dist=1, 0 at dist=EDGE
+                    color = bt < thr ? (mtnNear ? [0,0,0] : [0,0,170]) : sky;
+                } else {
+                    color = sky;
+                }
+            }
+            d[idx] = color[0]; d[idx+1] = color[1]; d[idx+2] = color[2]; d[idx+3] = 255;
         }
     }
+
+    // Scatter background stars (skip pixels that are mountain)
+    for (let i = 0; i < egaBgStars.length; i += 5) {
+        const sx = egaBgStars[i], sy = egaBgStars[i+1];
+        const si = (sy * W + sx) * 4;
+        if (si >= 0 && si < d.length && egaMask[si] < 64 && egaMask[si+2] < 64) {
+            d[si] = egaBgStars[i+2]; d[si+1] = egaBgStars[i+3];
+            d[si+2] = egaBgStars[i+4]; d[si+3] = 255;
+        }
+    }
+
     egaCtx.putImageData(img, 0, 0);
 }
 
 function startEGADither() {
     egaCanvas = document.getElementById('ega-canvas');
+    egaMask = null; egaBgStars = null;
     const sc = scene.getBoundingClientRect();
-    // Scale 3: 3×3 px blocks — authentic EGA 320×200 feel
+    // 3px per EGA pixel — authentic 320×200 feel at typical viewport
     egaCanvas.width  = Math.ceil(sc.width  / 3);
     egaCanvas.height = Math.ceil(sc.height / 3);
     egaCtx = egaCanvas.getContext('2d');
     renderEGAFrame();
     startEGADither._onResize = () => {
         const s = scene.getBoundingClientRect();
+        egaMask = null; egaBgStars = null;
         egaCanvas.width  = Math.ceil(s.width  / 3);
         egaCanvas.height = Math.ceil(s.height / 3);
         renderEGAFrame();
@@ -176,6 +217,8 @@ function stopEGADither() {
         window.removeEventListener('resize', startEGADither._onResize);
         startEGADither._onResize = null;
     }
+    egaMask = null; egaBgStars = null;
+    if (egaCanvas) { egaCanvas.width = 1; egaCanvas.height = 1; }
 }
 // ======= END EGA DITHER ENGINE =======
 

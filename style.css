@@ -128,45 +128,60 @@ body.dither-mode #ega-canvas {
     display: block;
 }
 
-/* EGA dither mode: apply EGA 16-color quantize filter to the WHOLE scene */
+/* ── EGA DITHER MODE — Monkey Island 1 / Loom 1990 aesthetic ─────────────────
+   Canvas (z:0) renders everything behind interactive elements:
+     • sky with Bayer 4×4 band dithering (visible checkerboard at seams)
+     • mountain silhouettes with dithered fringe at peaks
+     • scattered background stars
+   HTML mountains/starfield hidden — canvas replaces them.
+   No feComponentTransfer filter needed — canvas is already pixel-perfect EGA.
+   All clickable HTML elements stay at z:1+ and use solid EGA colors.
+   ─────────────────────────────────────────────────────────────────────────── */
+
 body.dither-mode #scene {
     background: #000000 !important;
-    filter: url(#dither-posterize);
+    filter: none;
     image-rendering: pixelated;
 }
 
-/* scene::before: remove gradient bands */
+/* Remove CSS sky gradient — canvas is the background now */
 body.dither-mode #scene::before {
     display: none;
 }
 
-/* Stars: EGA with pixelated rendering */
-body.dither-mode #stars-bg {
-    background-size: 360px 190px;
-    image-rendering: pixelated;
-    opacity: 1;
+/* Hide HTML mountains — canvas draws them with proper Bayer dithering */
+body.dither-mode #horizon {
+    display: none;
 }
-
-/* Mountains: exact EGA colors so filter leaves them crisp */
-body.dither-mode #horizon path {
-    fill: #000000; /* EGA black */
-}
-
 body.dither-mode #horizon-far {
-    filter: none;
-    opacity: 1;
+    display: none;
 }
 
-body.dither-mode #horizon-far path {
-    fill: #0000aa; /* EGA dark blue — clean input for the scene filter */
+/* Hide CSS starfield — canvas draws background stars */
+body.dither-mode #stars-bg {
+    display: none;
 }
 
-/* Towers: EGA black */
+/* EGA canvas: cover the full scene, bloque de 3×3px por pixel EGA */
+body.dither-mode #ega-canvas {
+    display: block;
+    z-index: 0; /* below sky-layer (z:1) so interactive stars stay on top */
+}
+
+/* Sky-layer: transparent so canvas shows through; interactive stars stay visible */
+body.dither-mode #sky-layer {
+    background: transparent;
+}
+
+/* ── TOWER STRUCTURES: flat EGA black ── */
 body.dither-mode .structure {
     background: #000000 !important;
     box-shadow: none !important;
+    border: none !important;
+    filter: none !important;
 }
 
+/* Kill any gradient backgrounds on tall/wide towers */
 body.dither-mode .t3 .structure,
 body.dither-mode .t4 .structure,
 body.dither-mode .t7 .structure,
@@ -174,23 +189,24 @@ body.dither-mode .t9 .structure {
     background: #000000 !important;
 }
 
-/* Lasers: exact EGA palette colors — quantize filter keeps them crisp */
+/* ── LASER CONNECTIONS: thick EGA lines, no glow ── */
 body.dither-mode .laser-line {
-    stroke: #aa0000; /* EGA dark red */
-    stroke-width: 0.3;
+    stroke: #aa0000;  /* EGA dark red */
+    stroke-width: 0.5;
     filter: none;
     opacity: 1;
 }
 body.dither-mode .laser-line.lvl-cyan {
-    stroke: #55ffff; /* EGA bright cyan */
+    stroke: #55ffff;  /* EGA bright cyan */
+    stroke-width: 0.5;
     filter: none;
     opacity: 1;
 }
 body.dither-mode .laser-line.lvl-violet {
-    stroke: #aa00aa; /* EGA dark magenta */
-    stroke-width: 0.3;
+    stroke: #ff55ff;  /* EGA bright magenta */
+    stroke-width: 0.5;
     filter: none;
-    animation: pulseLaserDither 0.5s steps(1) infinite alternate;
+    animation: pulseLaserDither 0.6s steps(1) infinite alternate;
 }
 
 /* ── INTERACTIVE NODES: EGA color-cycle animations, opacity always 1 ─────────
