@@ -145,3 +145,6 @@ Requiere **Node.js >= 18**. No hay backend ni assets de imagen — todo es CSS p
 ---
 
 *Prototipado durante sesiones de agente AI — "Berisso Incident" / Las Torres de la Madrugada.*
+## License
+
+MIT License — © 2026 [Vladimiro Bellini](https://github.com/vlasvlasvlas). Free to use and modify, attribution required.
